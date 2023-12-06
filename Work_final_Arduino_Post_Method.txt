@@ -6,7 +6,7 @@
 // Ethernet settings
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 IPAddress ip(192, 168, 0, 179); // Set the IP address for the Ethernet shield
-char server[] = "192.168.0.50"; // Server IP
+char server[] = "192.168.0.50"; // Server IP (write your IP address)
 EthernetClient client;
 
 Adafruit_BMP085 bmp;
