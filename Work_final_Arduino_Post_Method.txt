@@ -1,0 +1,127 @@
+#include <SPI.h>
+#include <Ethernet.h>
+#include <Adafruit_BMP085.h>
+#include <Arduino_JSON.h>
+
+// Ethernet settings
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+IPAddress ip(192, 168, 0, 179); // Set the IP address for the Ethernet shield
+char server[] = "192.168.0.50"; // Server IP
+EthernetClient client;
+
+Adafruit_BMP085 bmp;
+
+// LED settings
+#define LED_01 13
+#define LED_02 12
+
+// Global Variables for LED States
+String stateLED_01 = "OFF";
+String stateLED_02 = "OFF";
+
+// Function to control LEDs
+void control_LEDs(String response) {
+  JSONVar myObject = JSON.parse(response);
+  if (JSON.typeof(myObject["LED_01"]) != "undefined") {
+    digitalWrite(LED_01, String((const char*)myObject["LED_01"]) == "ON" ? HIGH : LOW);
+  }
+  if (JSON.typeof(myObject["LED_02"]) != "undefined") {
+    digitalWrite(LED_02, String((const char*)myObject["LED_02"]) == "ON" ? HIGH : LOW);
+  }
+}
+
+// Function to read and get data from the BMP085 sensor
+void get_BMP085_sensor_data() {
+  Serial.println("Getting BMP085 sensor data");
+
+  float temperature = bmp.readTemperature();
+  float pressure = bmp.readPressure();
+  float altitude = bmp.readAltitude();
+
+  if (isnan(temperature) || isnan(pressure) || isnan(altitude)) {
+    Serial.println("Failed to read from BMP085 sensor!");
+  } else {
+    Serial.print("Temperature: "); Serial.print(temperature); Serial.println(" *C");
+    Serial.print("Pressure: "); Serial.print(pressure); Serial.println(" Pa");
+    Serial.print("Altitude: "); Serial.print(altitude); Serial.println(" m");
+
+    // Read LED states
+    stateLED_01 = digitalRead(LED_01) == HIGH ? "ON" : "OFF";
+    stateLED_02 = digitalRead(LED_02) == HIGH ? "ON" : "OFF";
+
+    // Include ID, sensor data, and LED states in the POST data
+    String postData = "id=mega_01&temperature=" + String(temperature) + "&pressure=" + String(pressure) + "&altitude=" + String(altitude) + "&LED_01=" + stateLED_01 + "&LED_02=" + stateLED_02;
+
+    if (client.connect(server, 80)) {
+      client.println("POST /Test1/updateBMP085data_and_leds_1.php HTTP/1.1");
+      client.println("Host: " + String(server));
+      client.println("Content-Type: application/x-www-form-urlencoded");
+      client.print("Content-Length: ");
+      client.println(postData.length());
+      client.println();
+      client.print(postData);
+
+      delay(500); // Wait for server response
+
+      while (client.available()) {
+        char c = client.read();
+        Serial.write(c);
+      }
+
+      client.stop();
+    } else {
+      Serial.println("Connection failed");
+    }
+  }
+}
+
+// Function to get LED status from server
+void get_LED_Status() {
+  if (client.connect(server, 80)) {
+    String postData = "id=mega_01";
+    client.println("POST /Test1/getdata.php HTTP/1.1");
+    client.println("Host: " + String(server));
+    client.println("Content-Type: application/x-www-form-urlencoded");
+    client.print("Content-Length: ");
+    client.println(postData.length());
+    client.println();
+    client.print(postData);
+
+    delay(500); // Wait for server response
+
+    String response = "";
+    while (client.available()) {
+      char c = client.read();
+      response += c;
+    }
+
+    client.stop();
+
+    // Call control_LEDs function with the response
+    control_LEDs(response);
+  } else {
+    Serial.println("Connection to server failed");
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+  Ethernet.begin(mac, ip);
+
+  if (!bmp.begin()) {
+    Serial.println("Could not find a valid BMP085 sensor");
+    while (true);
+  }
+
+  // Initialize LED pins and set to OFF
+  pinMode(LED_01, OUTPUT);
+  pinMode(LED_02, OUTPUT);
+  digitalWrite(LED_01, LOW);
+  digitalWrite(LED_02, LOW);
+}
+
+void loop() {
+  get_BMP085_sensor_data();
+  get_LED_Status();
+  delay(10000); // Adjust the delay as needed
+}
